@@ -1,0 +1,41 @@
+# --- Secrets / local env ---
+.env
+*.env
+!.env.example
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+
+# --- Tooling caches ---
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# --- Databases (local SQLite) ---
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+data/
+
+# --- NiceGUI runtime storage ---
+.nicegui/
+
+# --- Editor / OS ---
+.idea/
+.vscode/
+.DS_Store
+
+# --- uv ---
+# uv.lock IS committed (reproducible builds); the venv is not.
