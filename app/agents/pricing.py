@@ -34,13 +34,20 @@ DEFAULT_MODEL_PRICE = PRICES["gpt-4o-mini"]
 
 
 def price_for(model: str) -> ModelPrice | None:
-    """Return the price for a model, matching exact id then a known prefix."""
+    """Return the price for a model, matching exact id then the longest known prefix.
+
+    Dated/suffixed ids (e.g. ``gpt-4.1-mini-2025-04-14``) resolve to their family
+    price. Matching the *longest* prefix — rather than the first in ``PRICES``
+    order — keeps resolution correct and order-independent even when one known id
+    is itself a prefix of another (``gpt-4.1`` vs ``gpt-4.1-mini``).
+    """
     if model in PRICES:
         return PRICES[model]
-    for known, price in PRICES.items():
-        if model.startswith(known):
-            return price
-    return None
+    best_known: str | None = None
+    for known in PRICES:
+        if model.startswith(known) and (best_known is None or len(known) > len(best_known)):
+            best_known = known
+    return PRICES[best_known] if best_known is not None else None
 
 
 def cost_usd(
