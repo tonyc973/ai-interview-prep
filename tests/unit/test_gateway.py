@@ -59,6 +59,14 @@ def _parsed_response(parsed: Any) -> Any:
     )
 
 
+def _refusal_response(refusal: str = "I can't help with that.") -> Any:
+    # Structured-output API returned no parsed object (e.g. a model refusal).
+    message = types.SimpleNamespace(parsed=None, refusal=refusal)
+    return types.SimpleNamespace(
+        choices=[types.SimpleNamespace(message=message)], usage=_usage_obj()
+    )
+
+
 def _ledger(**over: Any) -> UsageLedger:
     return UsageLedger(
         user_id=uuid.uuid4(),
@@ -164,6 +172,64 @@ async def test_acomplete_text_records_usage() -> None:
     assert len(ledger.entries) == 1
 
 
+async def test_acomplete_structured_returns_model() -> None:
+    # The async structured path drives every live interview turn and the final
+    # evaluation; exercise it directly (the interview tests use a fake gateway).
+    gateway = _make_gateway()
+
+    async def _parse(**_: Any) -> Any:
+        return _parsed_response(make_brief())
+
+    _set_async_client(gateway, parse=_parse)
+    ledger = _ledger()
+    result = await gateway.acomplete_structured(
+        messages=[{"role": "user", "content": "x"}],
+        model="gpt-4o-mini",
+        response_model=ResearchBrief,
+        ledger=ledger,
+        context=_ctx(),
+        temperature=0.3,
+    )
+    assert isinstance(result.value, ResearchBrief)
+    assert len(ledger.entries) == 1
+    assert ledger.entries[0].cost_usd > 0
+
+
+# --------------------------------------------------------------------------- #
+# Structured-output refusal safety net (parsed is None)
+# --------------------------------------------------------------------------- #
+def test_complete_structured_sync_refusal_raises() -> None:
+    gateway = _make_gateway()
+    _set_sync_client(gateway, parse=lambda **_: _refusal_response())
+    with pytest.raises(gw.GatewayError) as excinfo:
+        gateway.complete_structured_sync(
+            messages=[{"role": "user", "content": "x"}],
+            model="gpt-4o-mini",
+            response_model=ResearchBrief,
+            ledger=_ledger(),
+            context=_ctx(),
+        )
+    assert "valid response" in excinfo.value.user_message.lower()
+
+
+async def test_acomplete_structured_refusal_raises() -> None:
+    gateway = _make_gateway()
+
+    async def _parse(**_: Any) -> Any:
+        return _refusal_response()
+
+    _set_async_client(gateway, parse=_parse)
+    with pytest.raises(gw.GatewayError) as excinfo:
+        await gateway.acomplete_structured(
+            messages=[{"role": "user", "content": "x"}],
+            model="gpt-4o-mini",
+            response_model=ResearchBrief,
+            ledger=_ledger(),
+            context=_ctx(),
+        )
+    assert "valid response" in excinfo.value.user_message.lower()
+
+
 # --------------------------------------------------------------------------- #
 # Cost caps
 # --------------------------------------------------------------------------- #
@@ -215,6 +281,48 @@ def test_retries_transient_then_succeeds() -> None:
     )
     assert result.value == "recovered"
     assert attempts["n"] == 2
+
+
+async def test_async_retries_transient_then_succeeds() -> None:
+    # The async retry controller (AsyncRetrying + `with attempt:`) is a distinct
+    # code path from the sync one and must retry transient errors too.
+    gateway = _make_gateway()
+    attempts = {"n": 0}
+
+    async def _create(**_: Any) -> Any:
+        attempts["n"] += 1
+        if attempts["n"] == 1:
+            raise APITimeoutError(request=_REQUEST)
+        return _text_response("async recovered")
+
+    _set_async_client(gateway, create=_create)
+    result = await gateway.acomplete_text(
+        messages=[{"role": "user", "content": "x"}],
+        model="gpt-4o-mini",
+        ledger=_ledger(),
+        context=_ctx(),
+    )
+    assert result.value == "async recovered"
+    assert attempts["n"] == 2
+
+
+async def test_async_error_mapped_after_retry_exhaustion() -> None:
+    gateway = _make_gateway()
+    attempts = {"n": 0}
+
+    async def _create(**_: Any) -> Any:
+        attempts["n"] += 1
+        raise RateLimitError("slow down", response=httpx.Response(429, request=_REQUEST), body=None)
+
+    _set_async_client(gateway, create=_create)
+    with pytest.raises(RateLimited):
+        await gateway.acomplete_text(
+            messages=[{"role": "user", "content": "x"}],
+            model="gpt-4o-mini",
+            ledger=_ledger(),
+            context=_ctx(),
+        )
+    assert attempts["n"] == 3  # exhausted all attempts (openai_max_retries=3)
 
 
 def test_bad_request_mapped_to_gateway_error() -> None:
