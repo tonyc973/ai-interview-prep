@@ -3,6 +3,7 @@ and cost-cap enforcement. The OpenAI client is stubbed — no network."""
 
 from __future__ import annotations
 
+import itertools
 import types
 import uuid
 from typing import Any, cast
@@ -108,6 +109,26 @@ def test_complete_text_sync_records_usage() -> None:
     assert result.usage.prompt_tokens == 100
     assert len(ledger.entries) == 1
     assert ledger.entries[0].cost_usd > 0
+
+
+def test_records_measured_latency_on_entry(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The persisted usage entry must carry the measured call latency, not a
+    # placeholder zero (regression: _entry previously hardcoded latency_ms=0).
+    # A monotonically increasing fake clock guarantees a positive latency without
+    # depending on how many times tenacity reads the clock internally.
+    gateway = _make_gateway()
+    _set_sync_client(gateway, create=lambda **_: _text_response("hi"))
+    ticks = itertools.count(start=10.0, step=0.5)
+    monkeypatch.setattr("app.agents.gateway.time.monotonic", lambda: next(ticks))
+    ledger = _ledger()
+    result = gateway.complete_text_sync(
+        messages=[{"role": "user", "content": "x"}],
+        model="gpt-4o-mini",
+        ledger=ledger,
+        context=_ctx(),
+    )
+    assert result.latency_ms > 0
+    assert ledger.entries[0].latency_ms == result.latency_ms
 
 
 def test_complete_structured_sync_returns_model() -> None:

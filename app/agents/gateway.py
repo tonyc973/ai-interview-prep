@@ -249,7 +249,9 @@ class LLMGateway:
             cost_usd=cost,
         )
 
-    def _entry(self, ctx: CallContext, usage: Usage, model: str, *, success: bool) -> UsageEntry:
+    def _entry(
+        self, ctx: CallContext, usage: Usage, model: str, latency_ms: int, *, success: bool
+    ) -> UsageEntry:
         from app.db.repositories import UsageEntry
 
         return UsageEntry(
@@ -262,7 +264,7 @@ class LLMGateway:
             completion_tokens=usage.completion_tokens,
             total_tokens=usage.total_tokens,
             cost_usd=usage.cost_usd,
-            latency_ms=0,
+            latency_ms=latency_ms,
             success=success,
         )
 
@@ -429,7 +431,7 @@ class LLMGateway:
         *,
         structured: bool,
     ) -> None:
-        ledger.record(self._entry(ctx, usage, model, success=True))
+        ledger.record(self._entry(ctx, usage, model, latency_ms, success=True))
         self._log_call(ctx, model, usage, latency_ms, structured=structured)
 
     def _log_failure(self, ctx: CallContext, exc: Exception) -> None:
