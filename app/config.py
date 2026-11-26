@@ -75,7 +75,6 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     host: str = "0.0.0.0"  # noqa: S104 — binding all interfaces is intended for containers
     port: int = 8080
-    base_url: str = "http://localhost:8080"
 
     # ------------------------------------------------------------------ #
     @field_validator("storage_secret")
