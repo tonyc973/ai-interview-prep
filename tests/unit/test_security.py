@@ -52,3 +52,9 @@ def test_password_policy_strong() -> None:
 def test_needs_rehash_false_for_current() -> None:
     h = security.hash_password("a-strong-passphrase-123")
     assert not security.needs_rehash(h)
+
+
+def test_needs_rehash_true_for_invalid_hash() -> None:
+    # An unparseable/garbage hash should be treated as needing an upgrade,
+    # not crash — so a corrupt stored value is re-hashed on next login.
+    assert security.needs_rehash("not-a-valid-argon2-hash")
