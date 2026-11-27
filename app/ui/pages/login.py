@@ -57,7 +57,14 @@ def logout_page() -> None:
 
 
 def _safe_redirect(target: str) -> str:
-    """Only allow same-site relative redirects (no open redirect)."""
-    if target.startswith("/") and not target.startswith("//"):
+    """Only allow same-site relative redirects (no open redirect).
+
+    Browsers normalize backslashes to forward slashes, so ``/\\evil.com`` is read
+    by the browser as the protocol-relative ``//evil.com`` — an open redirect off
+    site. Normalize backslashes first, then require a path that starts with a
+    single ``/`` (a scheme-relative ``//host`` or absolute URL is refused).
+    """
+    normalized = target.replace("\\", "/")
+    if normalized.startswith("/") and not normalized.startswith("//"):
         return target
     return "/"
