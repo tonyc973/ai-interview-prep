@@ -28,7 +28,11 @@ def _ensure_sqlite_dir(database_url: str) -> None:
         return
     db_path = Path(raw_path)
     if not db_path.is_absolute():
-        db_path = PROJECT_ROOT / raw_path.lstrip("./")
+        # Resolve relative to the project root. Let Path do the joining: it drops
+        # a leading ``./`` while preserving ``..`` and dot-prefixed directories.
+        # (A naive ``raw_path.lstrip("./")`` strips a *character set*, mangling
+        # paths such as ``../data/app.db`` or ``.cfg/app.db``.)
+        db_path = PROJECT_ROOT / db_path
     db_path.parent.mkdir(parents=True, exist_ok=True)
 
 
