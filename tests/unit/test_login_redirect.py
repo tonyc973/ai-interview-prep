@@ -35,6 +35,14 @@ def test_safe_redirect_allows_same_site_paths(target: str) -> None:
         "/\\/evil.com",
         "\\\\evil.com",
         "/\\\\evil.com",
+        # Control-character variants: browsers strip tab/newline/CR before
+        # parsing, so these collapse to "//evil.com" and must be refused.
+        "/\t/evil.com",
+        "/\n/evil.com",
+        "/\r/evil.com",
+        "/\r\n/evil.com",
+        "/\t\\evil.com",
+        "\t//evil.com",
     ],
 )
 def test_safe_redirect_blocks_off_site_targets(target: str) -> None:

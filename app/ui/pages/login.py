@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from nicegui import ui
 
 from app.container import get_container
@@ -56,15 +58,25 @@ def logout_page() -> None:
     ui.navigate.to("/login")
 
 
+# Characters the URL standard removes from a URL before parsing (tab, LF, CR).
+# A browser strips these, so ``/\t/evil.com`` is read as ``//evil.com``; we strip
+# them the same way before validating the redirect target.
+_URL_REMOVED_CHARS = re.compile(r"[\t\n\r]")
+
+
 def _safe_redirect(target: str) -> str:
     """Only allow same-site relative redirects (no open redirect).
 
-    Browsers normalize backslashes to forward slashes, so ``/\\evil.com`` is read
-    by the browser as the protocol-relative ``//evil.com`` — an open redirect off
-    site. Normalize backslashes first, then require a path that starts with a
-    single ``/`` (a scheme-relative ``//host`` or absolute URL is refused).
+    Browsers normalize backslashes to forward slashes and strip embedded tab,
+    newline, and carriage-return characters before parsing a URL. So both
+    ``/\\evil.com`` (read as ``//evil.com``) and ``/\t/evil.com`` (read as
+    ``//evil.com`` once the tab is stripped) are protocol-relative open
+    redirects. Sanitize the target the same way the browser will, then require a
+    path that starts with a single ``/`` (a scheme-relative ``//host`` or an
+    absolute URL is refused). Return the sanitized value so the navigation uses
+    the exact string we validated, never one that re-expands off site.
     """
-    normalized = target.replace("\\", "/")
-    if normalized.startswith("/") and not normalized.startswith("//"):
-        return target
+    sanitized = _URL_REMOVED_CHARS.sub("", target).replace("\\", "/")
+    if sanitized.startswith("/") and not sanitized.startswith("//"):
+        return sanitized
     return "/"
